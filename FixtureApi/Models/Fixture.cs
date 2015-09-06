@@ -36,6 +36,14 @@ namespace FixtureApi.Models {
             }
         }
 
+        public MatchMode Mode {
+            get; set;
+        }
+
+        public int GroupSize {
+            get; set;
+        }
+
         public List<Team> Teams {
             get {
                 if(_teams == null) {
@@ -45,22 +53,49 @@ namespace FixtureApi.Models {
             }
         }
 
-        public MatchMode Mode {
-            get; set;
-        }
-
-        public int GroupSize {
-            get; set;
-        }
-
         public List<Group> Groups {
             get; set;
-        } 
+        }
         #endregion
 
+        internal Match FindMatchByOrder(int matchOrder) {
+            return Matches.SingleOrDefault(x => x.Order == matchOrder);
+        }
+
+        internal Match UpdateMatch(Match match) {
+            var currentMatch = this.Matches.SingleOrDefault(x => x.Order == match.Order);
+            if(currentMatch != null) {
+                currentMatch.Result = match.Result;
+                // if necessary update teams scores
+                if(currentMatch.Group != null || this.Mode == MatchMode.LeagueOneWay || this.Mode == MatchMode.LeagueTwoWay) {
+                    switch(match.Result) {
+                        case ResultType.Tie:
+                            UpdateTeamScore(currentMatch.AwayTeam, 1);
+                            UpdateTeamScore(currentMatch.HomeTeam, 1);
+                            break;
+                        case ResultType.Win:
+                            UpdateTeamScore(currentMatch.HomeTeam, 3);
+                            break;
+                        case ResultType.Lose:
+                            UpdateTeamScore(currentMatch.AwayTeam, 3);
+                            break;
+                        case ResultType.NotPlayed:
+                        case ResultType.Scheduled:
+                        default:
+                            break;
+                    }
+                }
+                // TODO: Calculate next round of matches
+
+            }
+
+            return currentMatch;
+        }
+
         internal int AddTeam(string name) {
-            int newid = Teams.Count + 1;
+            int newid = 0;
             if(!Teams.Any(x => x.Name == name)) {
+                newid = Teams.Count + 1;
                 _teams.Add(new Team(newid, name));
             }
             return newid;
@@ -83,28 +118,29 @@ namespace FixtureApi.Models {
         }
 
         internal bool AnyMatch(Team teamA, Team teamB) {
-            return _matches.Any(x => (x.HomeTeam == teamA && x.AwayTeam == teamB)
+            return Matches.Any(x => (x.HomeTeam == teamA && x.AwayTeam == teamB)
             || (x.HomeTeam == teamB && x.AwayTeam == teamA));
         }
 
         internal bool AnyHomeMatch(Team teamA, Team teamB) {
-            return _matches.Any(x => x.HomeTeam == teamA && x.AwayTeam == teamB);
+            return Matches.Any(x => x.HomeTeam == teamA && x.AwayTeam == teamB);
         }
 
         internal bool AnyAwayMatch(Team teamA, Team teamB) {
-            return _matches.Any(x => x.HomeTeam == teamB && x.AwayTeam == teamA);
+            return Matches.Any(x => x.HomeTeam == teamB && x.AwayTeam == teamA);
         }
 
         internal void AddMatch(Team home, Team away, Group group) {
-            int order = _matches.Count;
+            int order = Matches.Count;
             var newMatch = new Match { HomeTeam = home, AwayTeam = away, Group = group, Order = order + 1 };
             _matches.Add(newMatch);
         }
 
         internal void AddMatch(Match match) {
-            if(!Matches.Contains(match)) {
-                _matches.Add(match);
+            if(Matches.Any(x => x.Order == match.Order)) {
+                throw new Exception("Cannot add the match, there is one with the same order #" + match.Order);
             }
+            _matches.Add(match);
         }
 
         /// <summary>
@@ -186,25 +222,42 @@ namespace FixtureApi.Models {
         }
 
         private static void GenerateLeagueMatches(ref Fixture fixture, List<Team> teams, bool isTwoWays, Group group = null) {
-            int maxMatchOrder = fixture.Matches.Count;
-            int teamNumber = teams.Count;
-            for(int i = 0; i < teamNumber; i++) {
-                Team teamA = teams.ElementAt(i);
-                for(int j = 0; j < teamNumber; j++) {
-                    if(i == j) {
-                        continue;
-                    }
+            //int maxMatchOrder = fixture.Matches.Count;
+            int maxNumber = CalculateMaxNumberOfLeagueMatches(teams.Count);
+            int bucket = isTwoWays ? maxNumber : maxNumber / 2;
+            Random r = new Random();
+            while(bucket!=0) {
+                int i = r.Next(teams.Count);
+                int j = r.Next(teams.Count);
+                if(i!=j) {
+                    Team teamA = teams.ElementAt(i);
                     Team teamB = teams.ElementAt(j);
                     if(isTwoWays) {
-                        fixture.AddMatch(teamA, teamB, group);
+                        if(!fixture.AnyHomeMatch(teamA,teamB)) {
+                            fixture.AddMatch(teamA, teamB, group);
+                            bucket--;
+                        }
                     } else {
                         if(!fixture.AnyMatch(teamA, teamB)) {
                             fixture.AddMatch(teamA, teamB, group);
+                            bucket--;
                         }
                     }
                 }
             }
         }
 
+        private static int CalculateMaxNumberOfLeagueMatches(int numberOfTeams) {
+            int result = 0;
+            for(int i = 0; i < numberOfTeams; i++) {
+                for(int j = 0; j < numberOfTeams; j++) {
+                    if(i == j) {
+                        continue;
+                    }
+                    result++;
+                }
+            }
+            return result;
+        }
     }
 }

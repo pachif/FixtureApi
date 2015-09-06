@@ -29,9 +29,40 @@ namespace FixtureApi.Controllers
             return Ok();
         }
 
-        public IHttpActionResult PutFixture(Fixture fixture) {
-            Database.PersistFixture(fixture);
-            return Ok();
+        [Route("Results")]
+        public IHttpActionResult GetResults(int id) {
+            Fixture found = Database.GetFixture(id);
+            Dictionary<Team, int> result = new Dictionary<Team, int>();
+            if(found == null) {
+                return NotFound();
+            } else {
+                switch(found.Mode) {
+                    case MatchMode.Tournament:
+                        //TODO:Retrive teams according positions, once it is ended
+                        break;
+                    case MatchMode.LeagueOneWay:
+                    case MatchMode.LeagueTwoWay:
+                        result = found.TeamScores;
+                        break;
+                }
+                return Ok(result);
+            }
+        }
+
+        [Route("Groups")]
+        public IHttpActionResult GetAllGroups(int id) {
+            Fixture found = Database.GetFixture(id);
+            if(found == null) {
+                return NotFound();
+            } else {
+                if(found.Mode!=MatchMode.Tournament) {
+                    return NotFound(); 
+                }
+                if(found.Groups.Count == 0) {
+                    found.BuildMatches();
+                }
+                return Ok(found.Matches);
+            }
         }
     }
 }
