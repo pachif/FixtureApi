@@ -192,7 +192,7 @@ namespace FixtureApi.Models {
             }
             fixture.Groups = groups;
 
-            // Eliminatories Cup
+            // 1st Round Cup Fixture
             int order = fixture.Matches.Count;
             int ficticiousId = int.MaxValue - 1;
             foreach(Group group in fixture.Groups) { // Impares
@@ -204,6 +204,7 @@ namespace FixtureApi.Models {
                 var teamB = new Team(ficticiousId, teamNameB);
                 ficticiousId--;
                 var newMatch = new Match { HomeTeam = teamA, AwayTeam = teamB, Order = order + 1, Result = ResultType.Scheduled };
+                fixture.AddMatch(newMatch);
                 order++;
             }
 
@@ -216,9 +217,53 @@ namespace FixtureApi.Models {
                 var teamB = new Team(ficticiousId, teamNameB);
                 ficticiousId--;
                 var newMatch = new Match { HomeTeam = teamA, AwayTeam = teamB, Order = order + 1, Result = ResultType.Scheduled };
+                fixture.AddMatch(newMatch);                
                 order++;
             }
 
+            var maxGroupNum = fixture.Groups.Count*2;
+            while (maxGroupNum > 4)
+            {
+                for (int i = 0; i < maxGroupNum; i = i + 2)
+                {
+                    int roundMatch1 = order - maxGroupNum - i;
+                    int roundMatch2 = order - maxGroupNum - i + 1;
+                    var teamA = new Team(ficticiousId, string.Format("Winer Match #{0}", roundMatch1));
+                    ficticiousId--;
+                    var teamB = new Team(ficticiousId, string.Format("Winer Match #{0}", roundMatch2));
+                    ficticiousId--;
+                    order++;
+                    var newMatch = new Match
+                        {
+                            HomeTeam = teamA,
+                            AwayTeam = teamB,
+                            Order = order,
+                            Result = ResultType.Scheduled
+                        };
+                    fixture.AddMatch(newMatch);
+                }
+
+                maxGroupNum = maxGroupNum/2;
+            }
+
+            // Firts 4 Teams position matches
+            for (int l = 0; l < 4; l=l+2)
+            {
+                int finalsMatch1 = order - maxGroupNum - l;
+                int finalsMatch2 = order - maxGroupNum - l + 1;
+                var teamA = new Team(ficticiousId, string.Format("{1} Match #{0}", finalsMatch1, l<2?"Winer":"Looser"));
+                ficticiousId--;
+                var teamB = new Team(ficticiousId, string.Format("{1} Match #{0}", finalsMatch2, l < 2 ? "Winer" : "Looser"));
+                ficticiousId--;
+                order++;
+                var newMatch = new Match {
+                    HomeTeam = teamA,
+                    AwayTeam = teamB,
+                    Order = order,
+                    Result = ResultType.Scheduled
+                };
+                fixture.AddMatch(newMatch);
+            }
         }
 
         private static void GenerateLeagueMatches(ref Fixture fixture, List<Team> teams, bool isTwoWays, Group group = null) {
