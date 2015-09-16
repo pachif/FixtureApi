@@ -11,6 +11,11 @@ namespace FixtureApi.Controllers
     [RoutePrefix("api/Fixtures/{id}")]
     public class TeamsController : ApiController
     {
+        /// <summary>
+        /// Get the list of all the teams
+        /// </summary>
+        /// <param name="id">the fixture id</param>
+        /// <returns>list of teams</returns>
         [Route("Teams")]
         public IHttpActionResult GetAllTeams(int id) {
             Fixture found = Database.GetFixture(id);
@@ -21,8 +26,14 @@ namespace FixtureApi.Controllers
             }
         }
 
+        /// <summary>
+        /// Retrieves a single Team
+        /// </summary>
+        /// <param name="id"></param>
+        /// <param name="teamId"></param>
+        /// <returns>a single team</returns>
         [Route("Teams/{teamId}")]
-        public IHttpActionResult GetAllTeams(int id, int teamId) {
+        public IHttpActionResult GetTeamById(int id, int teamId) {
             Fixture found = Database.GetFixture(id);
             if(found == null) {
                 return NotFound();
@@ -35,6 +46,13 @@ namespace FixtureApi.Controllers
             }
         }
 
+        /// <summary>
+        /// Adds a new Team to the fixture
+        /// </summary>
+        /// <param name="id">the fixture id</param>
+        /// <param name="team">the new team</param>
+        /// <returns>a single team</returns>
+        [Route("Teams")]
         public IHttpActionResult Post(int id, [FromBody] Team team) {
             Fixture found = Database.GetFixture(id);
             if(found == null) {

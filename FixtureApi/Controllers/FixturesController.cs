@@ -10,25 +10,45 @@ namespace FixtureApi.Controllers
 {
     public class FixturesController : ApiController {
 
+        /// <summary>
+        /// Retrieves current list of fixtures
+        /// </summary>
+        /// <returns></returns>
         public IHttpActionResult GetAllFixtures() {
             List<Fixture> list = Database.GetFixtures();
             return Ok(list);
         }
 
-        public IHttpActionResult GetFixture(int id) {
+        /// <summary>
+        /// Returns a single fixture
+        /// </summary>
+        /// <param name="id">the fixture id</param>
+        /// <returns></returns>
+        public HttpResponseMessage GetFixture(int id) {
             Fixture found = Database.GetFixture(id);
             if(found == null) {
-                return NotFound();
+                return new HttpResponseMessage(HttpStatusCode.NotFound);
             } else {
-                return Ok(found);
+                HttpResponseMessage response = Request.CreateResponse(HttpStatusCode.OK, found);
+                return response;
             }
         }
 
+        /// <summary>
+        /// Create or Updates the fixture passed in
+        /// </summary>
+        /// <param name="fixture">the affected fixture</param>
+        /// <returns></returns>
         public IHttpActionResult PostFixture(Fixture fixture) {
             Database.PersistFixture(fixture);
             return Ok();
         }
 
+        /// <summary>
+        /// Get the Team results depending on the fixture mode
+        /// </summary>
+        /// <param name="id">the fixture id</param>
+        /// <returns></returns>
         [Route("Results")]
         public IHttpActionResult GetResults(int id) {
             Fixture found = Database.GetFixture(id);
@@ -49,6 +69,11 @@ namespace FixtureApi.Controllers
             }
         }
 
+        /// <summary>
+        /// Returns all the groups with the teams embeded
+        /// </summary>
+        /// <param name="id">the fixture id</param>
+        /// <returns></returns>
         [Route("Groups")]
         public IHttpActionResult GetAllGroups(int id) {
             Fixture found = Database.GetFixture(id);

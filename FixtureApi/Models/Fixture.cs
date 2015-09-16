@@ -4,6 +4,7 @@ using System.Web.Services;
 using System.Web.Services.Protocols;
 using System.ComponentModel;
 using System.Collections.Generic;
+using System.Collections.ObjectModel;
 using System.Linq;
 
 namespace FixtureApi.Models {
@@ -66,8 +67,8 @@ namespace FixtureApi.Models {
             var currentMatch = this.Matches.SingleOrDefault(x => x.Order == match.Order);
             if(currentMatch != null) {
                 currentMatch.Result = match.Result;
-                // if necessary update teams scores
-                if(currentMatch.Group != null || this.Mode == MatchMode.LeagueOneWay || this.Mode == MatchMode.LeagueTwoWay) {
+                // League processing if necessary update teams scores
+                if(currentMatch.Group == null || this.Mode == MatchMode.LeagueOneWay || this.Mode == MatchMode.LeagueTwoWay) {
                     switch(match.Result) {
                         case ResultType.Tie:
                             UpdateTeamScore(currentMatch.AwayTeam, 1);
@@ -85,8 +86,106 @@ namespace FixtureApi.Models {
                             break;
                     }
                 }
-                // TODO: Calculate next round of matches
-
+                // Tournament Processing
+                if (Mode==MatchMode.Tournament)
+                {
+                    // TODO: Complete the Calculation of next round of matches
+                    if (currentMatch.Group != null)
+                    {
+                        // for Group phase
+                        var group = currentMatch.Group;
+                        switch (match.Result)
+                        {
+                            case ResultType.Tie:
+                                group.Scores[currentMatch.AwayTeam] += 1;
+                                group.Scores[currentMatch.HomeTeam] += 1;
+                                break;
+                            case ResultType.Win:
+                                group.Scores[currentMatch.HomeTeam] += 3;
+                                break;
+                            case ResultType.Lose:
+                                group.Scores[currentMatch.AwayTeam] += 3;
+                                break;
+                            case ResultType.NotPlayed:
+                            case ResultType.Scheduled:
+                            default:
+                                break;
+                        }
+                    }
+                    else
+                    {
+                        int playedMatches = 0;
+                        string teamName = string.Empty;
+                        // we are sitting at Eliminatory matches
+                        // check first for qualified games
+                        foreach (Group group in Groups)
+                        {
+                            var matches = Matches.FindAll(m => m.Group.Equals(group));
+                            int allMatches = CalculateMaxNumberOfLeagueMatches(group.Teams.Count);
+                            playedMatches =
+                                matches.Count(m => m.Result != ResultType.NotPlayed || m.Result != ResultType.Scheduled);
+                            if (playedMatches.Equals(allMatches) && group.Qualified.Count.Equals(0))
+                            {
+                                List<KeyValuePair<Team, int>> teams =
+                                    group.Scores.OrderByDescending(vk => vk.Value).ToList();
+                                for (int i = 1; i < 3; i++)
+                                {
+                                    var qualified = teams[i].Key;
+                                    group.Qualified.Add(i, qualified);
+                                    // Replace processing
+                                    teamName = string.Format("{0} Group#{1}", i == 1 ? "1st" : "2nd", group.Id);
+                                    var matchToReplace = Matches.Find(m => m.HomeTeam.Name.Equals(teamName));
+                                    if (i == 1)
+                                    {
+                                        matchToReplace.HomeTeam = qualified;
+                                    }
+                                    else
+                                    {
+                                        matchToReplace.AwayTeam = qualified;
+                                    }
+                                }
+                            }
+                        }
+                        
+                        playedMatches = Matches.Count(m => m.Result != ResultType.Scheduled);
+                        int allGroupMatches = CalculateMaxCountGroupMatches();
+                        if (playedMatches > allGroupMatches)
+                        {
+                            // check for eliminatories
+                            var matches = Matches.FindAll(m => m.Result == ResultType.Scheduled);
+                            foreach (Match elimintatoryGame in matches)
+                            {
+                                teamName = string.Format("Winner Match #{0}", elimintatoryGame.Order);
+                                if (elimintatoryGame.HomeTeam.Name.Equals(teamName) && match.Result == ResultType.Win)
+                                {
+                                    elimintatoryGame.HomeTeam = match.Result == ResultType.Win ? match.HomeTeam : match.AwayTeam;
+                                }
+                            }
+                            // check for finals
+                            string teamNameFormat = "Semifinal Winner Match #{0}";
+                            Match foundMatch = matches.Find(m => m.HomeTeam.Name.Equals(string.Format(teamNameFormat, match.Order)));
+                            if (foundMatch!=null )
+                            {
+                                foundMatch.HomeTeam = match.Result == ResultType.Win ? match.HomeTeam : match.AwayTeam;
+                            }
+                            foundMatch = matches.Find(m => m.AwayTeam.Name.Equals(string.Format(teamNameFormat, match.Order)));
+                            if (foundMatch != null) {
+                                foundMatch.AwayTeam = match.Result == ResultType.Win ? match.HomeTeam : match.AwayTeam;
+                            }
+                            //-
+                            teamNameFormat = "Semifinal Loser Match #{0}";
+                            foundMatch = matches.Find(m => m.HomeTeam.Name.Equals(string.Format(teamNameFormat, match.Order)));
+                            if (foundMatch != null) {
+                                foundMatch.HomeTeam = match.Result == ResultType.Lose ? match.HomeTeam : match.AwayTeam;
+                            }
+                            foundMatch = matches.Find(m => m.AwayTeam.Name.Equals(string.Format(teamNameFormat, match.Order)));
+                            if (foundMatch != null) {
+                                foundMatch.AwayTeam = match.Result == ResultType.Lose ? match.HomeTeam : match.AwayTeam;
+                            }
+                        }
+                        
+                    }
+                }
             }
 
             return currentMatch;
@@ -166,39 +265,57 @@ namespace FixtureApi.Models {
 
         }
 
-        private void CheckValidations(Fixture fixture) {
-            if(fixture.Mode == MatchMode.Tournament && fixture.Teams.Count < 4) {
-                throw new Exception("Insuficient Numbers of Teams");
+        private void CheckValidations(Fixture fixture)
+        {
+            if (fixture.Mode == MatchMode.Tournament)
+            {
+                if (fixture.Teams.Count < 4)
+                {
+                    throw new Exception("Insuficient Numbers of Teams");
+                } else if (fixture.Teams.Count < fixture.GroupSize)
+                {
+                    throw new Exception("Insuficient Numbers of Teams according GroupSize");
+                }
             }
+
         }
 
         private static void BuildTournamentMatches(ref Fixture fixture) {
-            int teamCount = 1;
             var groupQuantity = fixture.Teams.Count / fixture.GroupSize;
-            //int matchOrder = 1;
+
+            #region Teams Draw
+            // draw phase
             List<Group> groups = new List<Group>();
-            for(int g = 0; g < groupQuantity; g++) {
+            List<Team> notDrawTeams = new List<Team>(fixture.Teams);
+            Random ra = new Random();
+            for (int g = 0; g < groupQuantity; g++) {
                 string groupName = string.Format("Group #{0}", g + 1);
                 Group gr = new Group { Id = g + 1, Name = groupName };
-                var teams = new List<Team>();
-                for(int i = 0; i < fixture.GroupSize; i++) {
-                    Team teamA = new Team(teamCount, string.Format("Team #{0}", teamCount));
-                    teamCount++;
-                    teams.Add(teamA);
+                for (int i = 0; i < fixture.GroupSize; i++) {
+                    // loop until reach a team that is not drawn yet
+                    Team team = fixture.Teams[ra.Next(fixture.Teams.Count)];
+                    while (!notDrawTeams.Contains(team)) {
+                        team = fixture.Teams[ra.Next(fixture.Teams.Count)];
+                    }
+                    // Now configure the group
+                    gr.Teams.Add(team);
+                    gr.Scores.Add(team, 0);
+                    notDrawTeams.Remove(team);
                 }
-                gr.Teams = teams;
                 GenerateLeagueMatches(ref fixture, gr.Teams, false, gr);
                 groups.Add(gr);
             }
-            fixture.Groups = groups;
+            fixture.Groups = groups; 
+            #endregion
 
-            // 1st Round Cup Fixture
+            #region 1st Round Cup Fixture
             int order = fixture.Matches.Count;
             int ficticiousId = int.MaxValue - 1;
-            foreach(Group group in fixture.Groups) { // Impares
-                if(group.Id % 2 == 1) continue;
+            foreach (Group group in fixture.Groups) { 
+                // Skip even
+                if (group.Id % 2 == 0) continue;
                 string teamNameA = string.Format("1st Group #{0}", group.Id);
-                string teamNameB = string.Format("2st Group #{0}", group.Id + 1);
+                string teamNameB = string.Format("2nd Group #{0}", group.Id + 1);
                 var teamA = new Team(ficticiousId, teamNameA);
                 ficticiousId--;
                 var teamB = new Team(ficticiousId, teamNameB);
@@ -208,52 +325,55 @@ namespace FixtureApi.Models {
                 order++;
             }
 
-            foreach(Group group in fixture.Groups) { // Pares
-                if(group.Id % 2 == 0) continue;
+            foreach (Group group in fixture.Groups) { 
+                // Skip uneven
+                if (group.Id % 2 == 1) continue;
                 string teamNameA = string.Format("1st Group #{0}", group.Id);
-                string teamNameB = string.Format("2st Group #{0}", group.Id - 1);
+                string teamNameB = string.Format("2nd Group #{0}", group.Id - 1);
                 var teamA = new Team(ficticiousId, teamNameA);
                 ficticiousId--;
                 var teamB = new Team(ficticiousId, teamNameB);
                 ficticiousId--;
                 var newMatch = new Match { HomeTeam = teamA, AwayTeam = teamB, Order = order + 1, Result = ResultType.Scheduled };
-                fixture.AddMatch(newMatch);                
+                fixture.AddMatch(newMatch);
                 order++;
             }
+            #endregion
 
-            var maxGroupNum = fixture.Groups.Count*2;
-            while (maxGroupNum > 4)
-            {
-                for (int i = 0; i < maxGroupNum; i = i + 2)
-                {
+            #region Eliminatories
+            // Final eliminatories matches
+            var maxGroupNum = fixture.Groups.Count * 2;
+            while (maxGroupNum > 4) {
+                for (int i = 0; i < maxGroupNum; i = i + 2) {
                     int roundMatch1 = order - maxGroupNum - i;
                     int roundMatch2 = order - maxGroupNum - i + 1;
-                    var teamA = new Team(ficticiousId, string.Format("Winer Match #{0}", roundMatch1));
+                    var teamA = new Team(ficticiousId, string.Format("Winner Match #{0}", roundMatch1));
                     ficticiousId--;
-                    var teamB = new Team(ficticiousId, string.Format("Winer Match #{0}", roundMatch2));
+                    var teamB = new Team(ficticiousId, string.Format("Winner Match #{0}", roundMatch2));
                     ficticiousId--;
-                    order++;
-                    var newMatch = new Match
-                        {
-                            HomeTeam = teamA,
-                            AwayTeam = teamB,
-                            Order = order,
-                            Result = ResultType.Scheduled
-                        };
+
+                    var newMatch = new Match {
+                        HomeTeam = teamA,
+                        AwayTeam = teamB,
+                        Order = order,
+                        Result = ResultType.Scheduled
+                    };
                     fixture.AddMatch(newMatch);
+                    order++;
                 }
 
-                maxGroupNum = maxGroupNum/2;
+                maxGroupNum = maxGroupNum / 2;
             }
+            #endregion
 
+            #region Final Matches
             // Firts 4 Teams position matches
-            for (int l = 0; l < 4; l=l+2)
-            {
-                int finalsMatch1 = order - maxGroupNum - l;
-                int finalsMatch2 = order - maxGroupNum - l + 1;
-                var teamA = new Team(ficticiousId, string.Format("{1} Match #{0}", finalsMatch1, l<2?"Winer":"Looser"));
+            int finalsMatch1 = order - 1;
+            int finalsMatch2 = order;
+            for (int l = 0; l < 4; l = l + 2) {
+                var teamA = new Team(ficticiousId, string.Format("Semifinal {1} Match #{0}", finalsMatch1, l < 2 ? "Winner" : "Loser"));
                 ficticiousId--;
-                var teamB = new Team(ficticiousId, string.Format("{1} Match #{0}", finalsMatch2, l < 2 ? "Winer" : "Looser"));
+                var teamB = new Team(ficticiousId, string.Format("Semifinal {1} Match #{0}", finalsMatch2, l < 2 ? "Winner" : "Loser"));
                 ficticiousId--;
                 order++;
                 var newMatch = new Match {
@@ -263,7 +383,8 @@ namespace FixtureApi.Models {
                     Result = ResultType.Scheduled
                 };
                 fixture.AddMatch(newMatch);
-            }
+            } 
+            #endregion
         }
 
         private static void GenerateLeagueMatches(ref Fixture fixture, List<Team> teams, bool isTwoWays, Group group = null) {
@@ -275,8 +396,8 @@ namespace FixtureApi.Models {
                 int i = r.Next(teams.Count);
                 int j = r.Next(teams.Count);
                 if(i!=j) {
-                    Team teamA = teams.ElementAt(i);
-                    Team teamB = teams.ElementAt(j);
+                    Team teamA = teams[i];
+                    Team teamB = teams[j];
                     if(isTwoWays) {
                         if(!fixture.AnyHomeMatch(teamA,teamB)) {
                             fixture.AddMatch(teamA, teamB, group);
@@ -303,6 +424,11 @@ namespace FixtureApi.Models {
                 }
             }
             return result;
+        }
+
+        private int CalculateMaxCountGroupMatches()
+        {
+            return CalculateMaxNumberOfLeagueMatches(GroupSize) * Groups.Count;
         }
     }
 }

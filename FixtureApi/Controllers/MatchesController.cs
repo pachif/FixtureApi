@@ -27,6 +27,12 @@ namespace FixtureApi.Controllers {
             }
         }
 
+        /// <summary>
+        /// Retrieves a single Match object for the given parameters
+        /// </summary>
+        /// <param name="id">the fixture id</param>
+        /// <param name="matchOrder">the match order</param>
+        /// <returns></returns>
         [Route("Matches/{matchOrder}")]
         public IHttpActionResult GetMatchByOrder(int id, int matchOrder) {
             Fixture found = Database.GetFixture(id);
@@ -44,6 +50,12 @@ namespace FixtureApi.Controllers {
             }
         }
 
+        /// <summary>
+        /// Updates the result existent match
+        /// </summary>
+        /// <param name="id">the fixture id</param>
+        /// <param name="match">the edited match</param>
+        /// <returns></returns>
         [Route("Matches")]
         public IHttpActionResult Post(int id, [FromBody] Match match) {
             Fixture found = Database.GetFixture(id);
