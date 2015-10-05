@@ -5,6 +5,7 @@ using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Web.Http;
+using FixtureApi.Serialization;
 
 namespace FixtureApi.Controllers
 {
@@ -48,24 +49,42 @@ namespace FixtureApi.Controllers
         /// Get the Team results depending on the fixture mode
         /// </summary>
         /// <param name="id">the fixture id</param>
+        /// <param name="groupId">Optional. the group we want results</param>
         /// <returns></returns>
-        [Route("Results")]
-        public IHttpActionResult GetResults(int id) {
+        [Route("api/Fixtures/{id}/Results/{groupId:int?}")]
+        public IHttpActionResult GetResults(int id, int? groupId = null)
+        {
             Fixture found = Database.GetFixture(id);
             Dictionary<Team, int> result = new Dictionary<Team, int>();
-            if(found == null) {
+            if (found == null)
+            {
                 return NotFound();
-            } else {
-                switch(found.Mode) {
+            }
+            else
+            {
+                switch (found.Mode)
+                {
                     case MatchMode.Tournament:
                         //TODO:Retrive teams according positions, once it is ended
+                        if (groupId.HasValue)
+                        {
+                            var group = found.Groups.SingleOrDefault(g => g.Id == groupId.Value);
+                            result = group == null ? null : group.Scores;
+                        }
                         break;
                     case MatchMode.LeagueOneWay:
                     case MatchMode.LeagueTwoWay:
                         result = found.TeamScores;
                         break;
                 }
-                return Ok(result);
+                List<ScoreItem> scores =new List<ScoreItem>();
+                foreach (var keyValue in result)
+                {
+                    var score = new ScoreItem() {TeamName = keyValue.Key.Name, Score = keyValue.Value};
+                    scores.Add(score);
+                }
+                scores.Sort(new ScoreComparer());
+                return Ok(scores);
             }
         }
 
@@ -74,7 +93,7 @@ namespace FixtureApi.Controllers
         /// </summary>
         /// <param name="id">the fixture id</param>
         /// <returns></returns>
-        [Route("Groups")]
+        [Route("api/Fixtures/{id}/Groups")]
         public IHttpActionResult GetAllGroups(int id) {
             Fixture found = Database.GetFixture(id);
             if(found == null) {
@@ -86,7 +105,7 @@ namespace FixtureApi.Controllers
                 if(found.Groups.Count == 0) {
                     found.BuildMatches();
                 }
-                return Ok(found.Matches);
+                return Ok(found.Groups);
             }
         }
     }

@@ -12,6 +12,7 @@ namespace FixtureApi.Models {
         private List<Match> _matches;
         private Dictionary<Team, int> _teamScores;
         private List<Team> _teams;
+        private List<Group> _groups;
 
         public Fixture(int v, string name) {
             Id = v;
@@ -54,9 +55,15 @@ namespace FixtureApi.Models {
             }
         }
 
-        public List<Group> Groups {
-            get; set;
+        public List<Group> Groups
+        {
+            get {
+                if (_groups == null) {
+                    _groups = new List<Group>();
+                }
+                return _groups; }
         }
+
         #endregion
 
         internal Match FindMatchByOrder(int matchOrder) {
@@ -210,8 +217,8 @@ namespace FixtureApi.Models {
         }
 
         internal void UpdateTeamScore(Team team, int score) {
-            if(!TeamScores.ContainsKey(team)) {
-                _teamScores.Add(team, 0);
+            if(TeamScores.Count==0) {
+                Teams.ForEach(t=> _teamScores.Add(t, 0));
             }
             _teamScores[team] += score;
         }
@@ -305,7 +312,7 @@ namespace FixtureApi.Models {
                 GenerateLeagueMatches(ref fixture, gr.Teams, false, gr);
                 groups.Add(gr);
             }
-            fixture.Groups = groups; 
+            fixture._groups = groups; 
             #endregion
 
             #region 1st Round Cup Fixture
